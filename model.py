@@ -253,5 +253,5 @@ def chat_interface():
 
 
 
-# 채팅 인터페이스 실행
+# 채팅 인터페이스 실행 함수
 chat_interface()
