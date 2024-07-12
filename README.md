@@ -9,6 +9,3 @@
 #### * 패키지 파일 만드는 법(라이브러리 업데이트 했을 때, 둘 중하나만 해도 됨) 
    - pip freeze > requirements.txt
    - pip list --format=freeze > requirements2.txt
-
-
-
