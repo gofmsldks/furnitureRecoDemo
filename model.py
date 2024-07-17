@@ -19,9 +19,11 @@ from langchain.schema import SystemMessage
 from langchain_openai import OpenAIEmbeddings
 from dotenv import load_dotenv
 from langchain_community.document_loaders import TextLoader
-from langchain_text_splitters import CharacterTextSplitter
+from langchain_text_splitters import CharacterTextSplitter, RecursiveCharacterTextSplitter
 #from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
+from langchain_community.vectorstores.utils import DistanceStrategy
+
 #from langchain.chains import LLMChain
 
 #from json import dumps
@@ -39,7 +41,7 @@ load_dotenv()
 # **** RAG 대상 문서 로드 하는 부분(따로 모듈로 만들 예정)****
 
 # LangChain을 사용하여 임베딩 생성 model="text-embedding-3-large"
-embeddings = OpenAIEmbeddings()
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 
 # 색상 데이터베이스 설정
 color_database = {}
@@ -64,6 +66,20 @@ color_retriever = color_info_db.as_retriever()
 
 
 
+# 가구 데이터베이스
+
+loader = TextLoader("./new_data.txt")
+documents = loader.load()
+# CharacterTextSplitter를 사용하여 문서를 분할합니다.
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=50)
+# 분할된 문서를 가져옵니다.
+docs1 = text_splitter.split_documents(documents)
+# 가구 정보 임베딩
+furniture_embeddings_db = FAISS.from_documents(docs1, embeddings)
+furniture_retriever = furniture_embeddings_db.as_retriever()
+#doc = furniture_retriever.invoke('소파를 찾아주세먼')
+#print(doc[0].page_content)
+
 # 가구 캡션 데이터베이스
 
 loader = TextLoader("./data.txt")
@@ -75,7 +91,7 @@ text_splitter = CharacterTextSplitter(chunk_size=300, chunk_overlap=0, separator
 docs = text_splitter.split_documents(documents)
 
 # 가구 캡션 정보 임베딩
-caption_embeddings_db = FAISS.from_documents(docs, embeddings)
+caption_embeddings_db = FAISS.from_documents(docs, embeddings, distance_strategy=DistanceStrategy.COSINE)
 
 '''
 # ./furnitrueCaptions.txt 파일 내용을 읽어서 file 변수에 저장합니다.
@@ -129,7 +145,7 @@ def recommendation_engine_with_image(image_path):
     return image_data, closest_color_name
 
 def vision_chain(inputs):
-    image_path, user_preference, context = str(inputs["image_path"]), str(inputs["user_preference"]), inputs["context"]
+    image_path, user_preference, context, context2 = str(inputs["image_path"]), str(inputs["user_preference"]), inputs["context"], inputs["context2"]
     image_data, closest_color_name = recommendation_engine_with_image(image_path)
 
     # LangChain을 사용하여 LLM 호출
@@ -142,9 +158,18 @@ def vision_chain(inputs):
     # 텍스트 프롬프트 준비
     system_message = SystemMessage(
         content=[
-
-             "질문자의 공간에 맞는 비슷한 가구와 인테리어의 구체적인 요약 정보와 각 가구 및 인테리어의 색상을 추천해서 스타일을 추천해라 "
-             + f"색상의 경우 해당 {context}와 최대한 일치 및 비슷한 색상으로 뽑아내고 해당 색과 잘 어울리는 인테리어를 뽑아내라"
+            '''당신은 사용자가 제공한 사진, 그 사진의 주요색상, 주어진 색상표와 잘 조합해서 잘어울리는 가구와 인테리어를 골라줘, 최종적으로 각 가구와 사용자와의 궁합과 궁합점수를 나타내주는 AI 어시스턴트입니다.
+            당신의 임무는 주어진 문맥(Context1, Context2)에서 사용자의 취향과 일치하는 색상 및 가구를 찾아서 추천해 주는 것입니다. 검색된 다음 문맥(Context1, Context2)을 사용하여 질문에 답하세요.
+            *중요) Context1은 색상표이며 Context2는 추천해줄 가구 리스트로 이미지경로, 가구명, 색상, 가구정보, 해시태그가 있는 정보입니다.
+            사용자가 제공한 사진, 그 사진의 색상, Context1과 비슷한 색상, 취향과 문맥(Context1, Context2)내에서 가구와 인테리어를 추천헤주세요,
+            먼저, 사진의 분위기와 설명을 요약해주고 해당 사진의 컬러와 추천 색상과 추천 이유를 말해주세요. 그후 인테리어 방향성과 추천 가구 리스트를 보여주세요. 추천가구이름은 최대한 대분류로 나타내주세요.
+            최종적으로는 각 가구와 사용자와의 궁합과 궁합점수를 나타내주세요.
+            한글로 답해주시고 재치있고 눈에잘들어오도록 답변해주세요.
+           
+            '''
+            + '문맥의 내용은 아래와 같습니다.'
+            + f' #Context1: {context}'
+            + f' #Context2: {context2}'
 
         ]
     )
@@ -156,8 +181,7 @@ def vision_chain(inputs):
         content=[
             {
                 "type": "text",
-                "text": f"사진의 주요 색깔은 {closest_color_name},선호스타일은 {user_preference} "
-                        + "일때 전송한 사진의 분위기 요약 설명, 색상, 가구, 인테리어를 추천해줘 "
+                "text": f"사진의 주요 색깔은 {closest_color_name},선호 색상 및 스타일은 {user_preference}"
             },
             {
                 "type": "image_url",
@@ -227,7 +251,7 @@ def chat_interface():
         final_chain = (
                 vision_chain | StrOutputParser()
         )
-        res = final_chain.invoke({"image_path": image_path, "user_preference": user_preference, "context": color_retriever})
+        res = final_chain.invoke({"image_path": image_path, "user_preference": user_preference, "context": color_retriever, "context2": furniture_retriever})
 
         # 추천 결과 출력
         print(f"### 추천 결과: {res}")
