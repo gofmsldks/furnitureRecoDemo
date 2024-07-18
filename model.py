@@ -45,7 +45,7 @@ embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 
 # 색상 데이터베이스 설정
 color_database = {}
-with open('./color_data.txt', 'r') as file:
+with open('./color_data.txt', 'r',  encoding='UTF8') as file:
     for line in file:
         if ':' in line:
             key, value = line.split(':', 1)
@@ -68,7 +68,7 @@ color_retriever = color_info_db.as_retriever()
 
 # 가구 데이터베이스
 
-loader = TextLoader("./new_data.txt")
+loader = TextLoader("./new_data.txt",  encoding='UTF8')
 documents = loader.load()
 # CharacterTextSplitter를 사용하여 문서를 분할합니다.
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=50)
@@ -76,13 +76,12 @@ text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=50
 docs1 = text_splitter.split_documents(documents)
 # 가구 정보 임베딩
 furniture_embeddings_db = FAISS.from_documents(docs1, embeddings)
-furniture_retriever = furniture_embeddings_db.as_retriever()
-#doc = furniture_retriever.invoke('소파를 찾아주세먼')
-#print(doc[0].page_content)
+furniture_retriever = furniture_embeddings_db.as_retriever(search_type="similarity")
+
 
 # 가구 캡션 데이터베이스
 
-loader = TextLoader("./data.txt")
+loader = TextLoader("./data.txt",  encoding='UTF8')
 documents = loader.load()
 # CharacterTextSplitter를 사용하여 문서를 분할합니다.
 text_splitter = CharacterTextSplitter(chunk_size=300, chunk_overlap=0, separator="\n")
@@ -145,31 +144,29 @@ def recommendation_engine_with_image(image_path):
     return image_data, closest_color_name
 
 def vision_chain(inputs):
-    image_path, user_preference, context, context2 = str(inputs["image_path"]), str(inputs["user_preference"]), inputs["context"], inputs["context2"]
+    image_path, question , context, context2  = str(inputs["image_path"]), str(inputs["question"]), inputs["context"], inputs["context2"]
     image_data, closest_color_name = recommendation_engine_with_image(image_path)
+
+    context2 = furniture_retriever.invoke(question)
 
     # LangChain을 사용하여 LLM 호출
     llm = ChatOpenAI(model="gpt-4o")
 
-
-
-
-
     # 텍스트 프롬프트 준비
     system_message = SystemMessage(
         content=[
-            '''당신은 사용자가 제공한 사진, 그 사진의 주요색상, 주어진 색상표와 잘 조합해서 잘어울리는 가구와 인테리어를 골라줘, 최종적으로 각 가구와 사용자와의 궁합과 궁합점수를 나타내주는 AI 어시스턴트입니다.
-            당신의 임무는 주어진 문맥(Context1, Context2)에서 사용자의 취향과 일치하는 색상 및 가구를 찾아서 추천해 주는 것입니다. 검색된 다음 문맥(Context1, Context2)을 사용하여 질문에 답하세요.
-            *중요) Context1은 색상표이며 Context2는 추천해줄 가구 리스트로 이미지경로, 가구명, 색상, 가구정보, 해시태그가 있는 정보입니다.
-            사용자가 제공한 사진, 그 사진의 색상, Context1과 비슷한 색상, 취향과 문맥(Context1, Context2)내에서 가구와 인테리어를 추천헤주세요,
-            먼저, 사진의 분위기와 설명을 요약해주고 해당 사진의 컬러와 추천 색상과 추천 이유를 말해주세요. 그후 인테리어 방향성과 추천 가구 리스트를 보여주세요. 추천가구이름은 최대한 대분류로 나타내주세요.
-            최종적으로는 각 가구와 사용자와의 궁합과 궁합점수를 나타내주세요.
-            한글로 답해주시고 재치있고 눈에잘들어오도록 답변해주세요.
-           
+            '''You are an AI assistant that selects furniture and interior design that goes well with a provided photo, the main colors of that photo, and a given color palette. Ultimately, you will show the compatibility and compatibility score between each piece of furniture and the user.
+                Your task is to find and recommend colors and furniture that match the user's preferences according to the question (question) and given context (#Context2).              
+                *Important) #Context2 is a list of furniture to recommend, containing image paths, furniture names, colors, furniture information, and hashtags.
+                Based on the user's provided photo, colors, and preferences, select and recommend furniture and interiors within the context (Context2). First, summarize the atmosphere and description of the photo, state the colors of the photo, recommend colors, and explain the reasons for your recommendations. Then, provide the direction for the interior design and show the list of recommended furniture. The recommended furniture names should be presented in a general category.
+                Finally, show the compatibility and compatibility score between each piece of furniture and the user.                
+                Please respond in Korean and make the answer witty and eye-catching.
+                The content of the context and question is as follows.
+                
+                show me resopnse to korean
             '''
-            + '문맥의 내용은 아래와 같습니다.'
-            + f' #Context1: {context}'
-            + f' #Context2: {context2}'
+            + f'#Context2: {context2}'
+            + f'#Questionn: {question}'
 
         ]
     )
@@ -181,7 +178,7 @@ def vision_chain(inputs):
         content=[
             {
                 "type": "text",
-                "text": f"사진의 주요 색깔은 {closest_color_name},선호 색상 및 스타일은 {user_preference}"
+                "text": f"사진의 주요 색깔은 {closest_color_name},선호 색상 및 스타일은 {question}"
             },
             {
                 "type": "image_url",
@@ -251,7 +248,8 @@ def chat_interface():
         final_chain = (
                 vision_chain | StrOutputParser()
         )
-        res = final_chain.invoke({"image_path": image_path, "user_preference": user_preference, "context": color_retriever, "context2": furniture_retriever})
+
+        res = final_chain.invoke({"image_path": image_path, "question": user_preference, "context": color_retriever, "context2": furniture_retriever})
 
         # 추천 결과 출력
         print(f"### 추천 결과: {res}")
