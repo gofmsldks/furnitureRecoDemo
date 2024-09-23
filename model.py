@@ -132,9 +132,9 @@ def get_color_recommendations(dominant_color):
 
 
 # LLM에 이미지와 텍스트를 함께 전달하여 추천 결과 생성
-def recommendation_engine_with_image(image_path):
-    with open(image_path, "rb") as image_file:
-        image_data = image_file.read()
+def recommendation_engine_with_image(image_data):
+    #with open(image_path, "rb") as image_file:
+    #   image_data = image_file.read()
 
     # 이미지 처리
     image = Image.open(io.BytesIO(image_data))
@@ -144,8 +144,8 @@ def recommendation_engine_with_image(image_path):
     return image_data, closest_color_name
 
 def vision_chain(inputs):
-    image_path, question , context, context2  = str(inputs["image_path"]), str(inputs["question"]), inputs["context"], inputs["context2"]
-    image_data, closest_color_name = recommendation_engine_with_image(image_path)
+    image, question , context, context2  = str(inputs["image"]), str(inputs["question"]), inputs["context"], inputs["context2"]
+    image_data, closest_color_name = recommendation_engine_with_image(image)
 
     context2 = furniture_retriever.invoke(question)
 
@@ -155,15 +155,16 @@ def vision_chain(inputs):
     # 텍스트 프롬프트 준비
     system_message = SystemMessage(
         content=[
-            '''You are an AI assistant that selects furniture and interior design that goes well with a provided photo, the main colors of that photo, and a given color palette. Ultimately, you will show the compatibility and compatibility score between each piece of furniture and the user.
-                Your task is to find and recommend colors and furniture that match the user's preferences according to the question (question) and given context (#Context2).              
-                *Important) #Context2 is a list of furniture to recommend, containing image paths, furniture names, colors, furniture information, and hashtags.
-                Based on the user's provided photo, colors, and preferences, select and recommend furniture and interiors within the context (Context2). First, summarize the atmosphere and description of the photo, state the colors of the photo, recommend colors, and explain the reasons for your recommendations. Then, provide the direction for the interior design and show the list of recommended furniture. The recommended furniture names should be presented in a general category.
-                Finally, show the compatibility and compatibility score between each piece of furniture and the user.                
-                Please respond in Korean and make the answer witty and eye-catching.
-                The content of the context and question is as follows.
-                
-                show me resopnse to korean
+            '''
+            당신은 사용자가 제공한 사진, 그 사진의 주요색상, 주어진 색상표와 잘 조합해서 잘어울리는 가구와 인테리어를 골라줘, 최종적으로 각 가구와 사용자와의 궁합과 궁합점수를 나타내주는 AI 어시스턴트입니다.
+            당신의 임무는 주어진 문맥(Context2)에서 질문(Quesiotn)에 따라 사용자의 취향과 일치하는 색상 및 가구를 찾아서 추천해 주는 것입니다. 검색된 다음 문맥(Context1, Context2)을 사용하여 질문에 답하세요.
+            *중요) Context2는 추천해줄 가구 리스트로 이미지경로, 가구명, 색상, 가구정보, 해시태그가 있는 정보입니다.
+            Context2의 주어진 문맥의 내용을 보여주세요. 없으면 없다고 하고 죄송합니다. 해당 가구는 없다고 알려주세요.
+            사용자가 제공한 사진, 그 사진의 색상, 취향을 고려하여 문맥(Context2)내에서 가구와 인테리어를 골라서 추천헤주세요,
+            먼저, 사진의 분위기와 설명을 요약해주고 해당 사진의 컬러와 추천 색상과 추천 이유를 말해주세요. 그후 인테리어 방향성과 추천 가구 리스트를 보여주세요. 추천가구이름은 최대한 대분류로 나타내주세요.
+            최종적으로는 각 가구와 사용자와의 궁합과 궁합점수를 나타내주세요.
+            한글로 답해주시고 재치있고 눈에잘들어오도록 답변해주세요.
+            문맥의 내용은 아래와 같습니다.
             '''
             + f'#Context2: {context2}'
             + f'#Questionn: {question}'
@@ -225,34 +226,36 @@ def find_similar_furniture(user_input):
 
 
 # 채팅 인터페이스 함수
-def chat_interface():
-    print("안녕하세요! 인테리어 및 가구 색상 추천 챗봇입니다.")
+def chat_interface(image_base64, user_preference):
+    #print("안녕하세요! 인테리어 및 가구 색상 추천 챗봇입니다.")
 
-    mode = input("추천을 받고 싶은 스타일의 사진을 입력하려면 1을, 비슷한 가구를 찾고 싶으면 2를 입력해주세요: ")
-
+    #mode = input("추천을 받고 싶은 스타일의 사진을 입력하려면 1을, 비슷한 가구를 찾고 싶으면 2를 입력해주세요: ")
+    mode = '1'
     if mode == '1':
         # 스타일 추천을 받고 싶은 경우
-        p_number = input("추천을 받고 싶은 인테리어 또는 가구의 이미지를 업로드해주세요: ")
-        image_path = f'./style{p_number}.jpeg'
-        user_preference = input("선호하는 색상 또는 스타일을 입력해주세요: ")
-
-        print("\n사용자 이미지\n")
-        img = Image.open(image_path)
+        #p_number = input("추천을 받고 싶은 인테리어 또는 가구의 이미지를 업로드해주세요: ")
+        #image_path = f'./style{p_number}.jpeg'
+        #user_preference = input("선호하는 색상 또는 스타일을 입력해주세요: ")
+        #print("\n사용자 이미지\n")
+        #img = Image.open(image_path)
         # 이미지 표시
-        plt.imshow(img)
-        plt.axis('off')  # 축 없애기
-        plt.show()
-        print("*****완료*****\n")
+        #plt.imshow(img)
+        #plt.axis('off')  # 축 없애기
+        #plt.show()
+        #print("*****완료*****\n")
+
+        image_data = base64.b64decode(image_base64)
+        image = Image.open(io.BytesIO(image_data))
 
         # 색상 및 인테리어 구성 방식 추천
         final_chain = (
                 vision_chain | StrOutputParser()
         )
 
-        res = final_chain.invoke({"image_path": image_path, "question": user_preference, "context": color_retriever, "context2": furniture_retriever})
+        res = final_chain.invoke({"image": image, "question": user_preference, "context": color_retriever, "context2": furniture_retriever})
 
         # 추천 결과 출력
-        print(f"### 추천 결과: {res}")
+        #print(f"### 추천 결과: {res}")
 
     elif mode == '2':
         # 비슷한 가구를 찾고 싶은 경우
@@ -276,4 +279,4 @@ def chat_interface():
 
 
 # 채팅 인터페이스 실행 함수
-chat_interface()
+#chat_interface()
