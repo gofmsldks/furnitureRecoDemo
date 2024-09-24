@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
-from PIL import Image
 import matplotlib.pyplot as plt
+from PIL import Image
 import io
 import base64
 #import os
@@ -132,69 +132,89 @@ def get_color_recommendations(dominant_color):
 
 
 # LLM에 이미지와 텍스트를 함께 전달하여 추천 결과 생성
-def recommendation_engine_with_image(image_data):
-    #with open(image_path, "rb") as image_file:
-    #   image_data = image_file.read()
+def recommendation_engine_with_image(image_base64):
+    try:
+        # Base64 문자열에서 헤더가 있을 경우 제거
+        if "," in image_base64:
+            image_base64 = image_base64.split(",")[1]  # 헤더 제거
 
-    # 이미지 처리
-    image = Image.open(io.BytesIO(image_data))
-    dominant_color = image_processing(image)
-    closest_color_name = get_color_recommendations(dominant_color)
+        # Base64 디코딩
+        image_data = base64.b64decode(image_base64)
 
-    return image_data, closest_color_name
+        # 디코딩된 이미지 데이터를 바이트 스트림으로 변환하여 이미지 로드
+        image = Image.open(io.BytesIO(image_data))
+
+        # OpenCV를 사용하여 이미지를 RGB로 변환
+        dominant_color = image_processing(image)
+
+        # 추출된 주요 색상과 가장 비슷한 색상 찾기
+        closest_color_name = get_color_recommendations(dominant_color)
+
+        return image, closest_color_name
+    except Exception as e:
+        print(f"오류 발생: {e}")
+        return None, None
+
 
 def vision_chain(inputs):
-    image, question , context, context2  = str(inputs["image"]), str(inputs["question"]), inputs["context"], inputs["context2"]
-    image_data, closest_color_name = recommendation_engine_with_image(image)
+    try:
+        image_base64, question , context, context2  = str(inputs["image"]), str(inputs["question"]), inputs["context"], inputs["context2"]
+        image_data, closest_color_name = recommendation_engine_with_image(image_base64)
+        context2 = furniture_retriever.invoke(question)
 
-    context2 = furniture_retriever.invoke(question)
+        # LangChain을 사용하여 LLM 호출
+        llm = ChatOpenAI(model="gpt-4o")
 
-    # LangChain을 사용하여 LLM 호출
-    llm = ChatOpenAI(model="gpt-4o")
+        # 텍스트 프롬프트 준비
+        system_message = SystemMessage(
+            content=[
+                '''
+                당신은 사용자가 제공한 사진, 그 사진의 주요색상, 주어진 색상표와 잘 조합해서 잘어울리는 가구와 인테리어를 골라줘, 최종적으로 각 가구와 사용자와의 궁합과 궁합점수를 나타내주는 AI 어시스턴트입니다.
+                당신의 임무는 주어진 문맥(Context2)에서 질문(Quesiotn)에 따라 사용자의 취향과 일치하는 색상 및 가구를 찾아서 추천해 주는 것입니다. 검색된 다음 문맥(Context1, Context2)을 사용하여 질문에 답하세요.
+                *중요) Context2는 추천해줄 가구 리스트로 이미지경로, 가구명, 색상, 가구정보, 해시태그가 있는 정보입니다.
+                Context2의 주어진 문맥의 내용을 보여주세요. 없으면 없다고 하고 죄송합니다. 해당 가구는 없다고 알려주세요.
+                사용자가 제공한 사진, 그 사진의 색상, 취향을 고려하여 문맥(Context2)내에서 가구와 인테리어를 골라서 추천헤주세요,
+                5개정도 보여주세요.
+                먼저, 사진의 분위기와 설명을 요약해주고 해당 사진의 컬러와 추천 색상과 추천 이유를 말해주세요. 그후 인테리어 방향성과 추천 가구 리스트를 보여주세요. 추천가구이름은 최대한 대분류로 나타내주세요.
+                최종적으로는 각 가구와 사용자와의 궁합과 궁합점수를 나타내주세요.
+                주의사항 : 한글로 답해주시고 가독성있게 개행문자를 포함 해서 보여주세요. 재치있고 눈에잘들어오도록 답변해주세요.
+                문맥의 내용은 아래와 같습니다.
+                '''
+                + f'#Context2: {context2}'
+                + f'#Questionn: {question}'
 
-    # 텍스트 프롬프트 준비
-    system_message = SystemMessage(
-        content=[
-            '''
-            당신은 사용자가 제공한 사진, 그 사진의 주요색상, 주어진 색상표와 잘 조합해서 잘어울리는 가구와 인테리어를 골라줘, 최종적으로 각 가구와 사용자와의 궁합과 궁합점수를 나타내주는 AI 어시스턴트입니다.
-            당신의 임무는 주어진 문맥(Context2)에서 질문(Quesiotn)에 따라 사용자의 취향과 일치하는 색상 및 가구를 찾아서 추천해 주는 것입니다. 검색된 다음 문맥(Context1, Context2)을 사용하여 질문에 답하세요.
-            *중요) Context2는 추천해줄 가구 리스트로 이미지경로, 가구명, 색상, 가구정보, 해시태그가 있는 정보입니다.
-            Context2의 주어진 문맥의 내용을 보여주세요. 없으면 없다고 하고 죄송합니다. 해당 가구는 없다고 알려주세요.
-            사용자가 제공한 사진, 그 사진의 색상, 취향을 고려하여 문맥(Context2)내에서 가구와 인테리어를 골라서 추천헤주세요,
-            먼저, 사진의 분위기와 설명을 요약해주고 해당 사진의 컬러와 추천 색상과 추천 이유를 말해주세요. 그후 인테리어 방향성과 추천 가구 리스트를 보여주세요. 추천가구이름은 최대한 대분류로 나타내주세요.
-            최종적으로는 각 가구와 사용자와의 궁합과 궁합점수를 나타내주세요.
-            한글로 답해주시고 재치있고 눈에잘들어오도록 답변해주세요.
-            문맥의 내용은 아래와 같습니다.
-            '''
-            + f'#Context2: {context2}'
-            + f'#Questionn: {question}'
+            ]
+        )
 
-        ]
-    )
-    # 이미지 데이터를 base64로 인코딩
-    image_data_base64 = base64.b64encode(image_data).decode("utf-8")
+        # 이미지 데이터를 base64로 인코딩
+        #image_data_base64 = base64.b64encode(image_data).decode("utf-8")
+        image_data_base64 = image_base64
+        # 멀티모달 메시지 생성
+        human_message = HumanMessage(
+            content=[
+                {
+                    "type": "text",
+                    "text": f"사진의 주요 색깔은 {closest_color_name},선호 색상 및 스타일은 {question}"
+                },
+                {
+                    "type": "image_url",
+                    #"image_url": {"url": f"data:image/jpeg;base64,{image_data_base64}"},
+                    "image_url": {"url": f"{image_data_base64}"},
+                },
+            ],
+        )
+        #prompt = prompt_template.format(closest_color_name=closest_color_name, user_preference=user_preference, context=retriever)
+        # RAG 체인 생성
+        #chain = RetrievalQA.from_chain_type(llm=llm, chain_type="stuff", retriever=vectorstore.as_retriever())
 
-    # 멀티모달 메시지 생성
-    human_message = HumanMessage(
-        content=[
-            {
-                "type": "text",
-                "text": f"사진의 주요 색깔은 {closest_color_name},선호 색상 및 스타일은 {question}"
-            },
-            {
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{image_data_base64}"},
-            },
-        ],
-    )
-    #prompt = prompt_template.format(closest_color_name=closest_color_name, user_preference=user_preference, context=retriever)
-    # RAG 체인 생성
-    #chain = RetrievalQA.from_chain_type(llm=llm, chain_type="stuff", retriever=vectorstore.as_retriever())
+        # 프롬프트와 이미지를 함께 전송하여 응답 받기
+        response = llm.invoke([system_message, human_message])
 
-    # 프롬프트와 이미지를 함께 전송하여 응답 받기
-    response = llm.invoke([system_message, human_message])
+        return response.content
 
-    return response.content
+    except Exception as e:
+        print(f"오류 발생: {e}")
+        return None, None
 
 
 # 유사 가구 찾기 함수
@@ -244,16 +264,18 @@ def chat_interface(image_base64, user_preference):
         #plt.show()
         #print("*****완료*****\n")
 
-        image_data = base64.b64decode(image_base64)
-        image = Image.open(io.BytesIO(image_data))
+        #image_data = base64.b64decode(image_base64)
 
         # 색상 및 인테리어 구성 방식 추천
         final_chain = (
                 vision_chain | StrOutputParser()
         )
 
-        res = final_chain.invoke({"image": image, "question": user_preference, "context": color_retriever, "context2": furniture_retriever})
+        # Vision Chain에 이미지 데이터와 질문 전달
+        res = final_chain.invoke({"image": image_base64, "question": user_preference, "context": color_retriever,
+                                  "context2": furniture_retriever})
 
+        return res
         # 추천 결과 출력
         #print(f"### 추천 결과: {res}")
 

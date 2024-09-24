@@ -7,7 +7,7 @@ app = Flask(__name__)
 def chat():
     # 텍스트와 이미지 데이터 받기
     user_preference = request.form.get('textMessage', '')
-    image_base64 = request.form.get('imageMessage', '')
+    image_base64 = request.form.get('imgMessage', '')
 
     if not image_base64:
         return jsonify({"error": "Image data is required"}), 400
@@ -15,7 +15,7 @@ def chat():
     # AI 모델 함수 호출
     try:
         result = model.chat_interface(image_base64, user_preference)
-        return jsonify({"result": result})
+        return jsonify({"textMessage": result})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
