@@ -18,6 +18,9 @@ def chat():
         return jsonify({"textMessage": result})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+@app.route('/')
+def home():
+   return 'Furniture Reco model TEST!!!!!! - 2024.12.29 Deploy'
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", debug=True, port=5000)
