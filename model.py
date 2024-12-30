@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 from PIL import Image
 import io
 import base64
+import json
+from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 #import os
 #import httpx
 #from langchain.chains import RetrievalQA
@@ -155,13 +157,35 @@ def recommendation_engine_with_image(image_base64):
         print(f"오류 발생: {e}")
         return None, None
 
+# JSON 포맷팅 함수
+def format_documents(docs):
+    formatted_docs = []
+    for doc in docs:
+        try:
+            # page_content를 JSON으로 로드
+            content_json = json.loads(doc.page_content)
+            # 보기 좋게 JSON 문자열로 변환
+            formatted_docs.append(json.dumps(content_json, indent=4, ensure_ascii=False))
+        except json.JSONDecodeError:
+            # JSON이 아닌 경우 그대로 추가
+            formatted_docs.append(doc.page_content)
+    return formatted_docs
 
 def vision_chain(inputs):
     try:
-        image_base64, question , context, context2  = str(inputs["image"]), str(inputs["question"]), inputs["context"], inputs["context2"]
+        image_base64, question = str(inputs["image"]), str(inputs["question"])
         image_data, closest_color_name = recommendation_engine_with_image(image_base64)
-        context2 = furniture_retriever.invoke(question)
+        # retriever에서 데이터를 검색
+        context_docs = furniture_retriever.invoke(question)
+        context2_docs = color_retriever.invoke(closest_color_name)
 
+        # 포맷팅된 데이터 생성
+        context = format_documents(context_docs)
+        context2 = format_documents(context2_docs)
+
+        print('*********')
+        print(context)
+        print(context2)
         # LangChain을 사용하여 LLM 호출
         llm = ChatOpenAI(model="gpt-4o")
 
@@ -170,20 +194,20 @@ def vision_chain(inputs):
             content=[
                 '''
                 당신은 사용자가 제공한 사진, 그 사진의 주요색상, 주어진 색상표와 잘 조합해서 잘어울리는 가구와 인테리어를 골라주며, 최종적으로 각 가구와 사용자와의 궁합과 궁합점수를 나타내주는 현대리바트의 AI 어시스턴트입니다.
-                당신의 임무는 주어진 문맥(Context2)에서 질문(Quesiotn)에 따라 사용자의 취향과 일치하는 색상 및 가구를 찾아서 추천해 주는 것입니다. 검색된 다음 문맥(Context1, Context2)을 사용하여 질문에 답하세요.
-                *중요) Context2는 추천해줄 가구 리스트로 이미지경로, 가구명, 색상(한글로 해석해서), 가구가격 등이 있는 정보입니다.
-                Context2의 주어진 문맥의 내용을 보여주세요.
-                사용자가 제공한 사진, 그 사진의 색상, 취향을 고려하여 문맥(Context2)내에서 가구와 인테리어를 골라서 추천헤주세요,
+                당신의 임무는 주어진 가구모델(Context)에서 질문(Quesiotn)에 따라 사용자의 취향과 일치하는 색상 및 가구를 찾아서 추천해 주는 것입니다. 검색된 다음 문맥(Context1, Context2)을 사용하여 질문에 답하세요.
+                *중요) Context는 추천해줄 가구 리스트로 이미지경로, 가구명, 색상(한글로 해석해서), 가구가격 등이 있는 정보입니다.
+                Context의 주어진 문맥의 내용을 보여주세요.
+                사용자가 제공한 사진, 그 사진의 색상, 취향을 고려하여 가구모델(Context)내에서 가구와 인테리어를 골라서 추천헤주세요,
                 5개정도 보여주세요. 채팅형식으로 답변을 보여줄것이기 때문에 채팅 형식에 맞게 보여주세요
                 먼저, 사진의 분위기와 설명을 요약해주고 해당 사진의 컬러와 추천 색상과 추천 이유를 말해주세요. 그후 인테리어 방향성과 추천 가구 리스트를 보여주세요. 추천가구이름은 최대한 대분류로 나타내주세요.
                 최종적으로는 각 가구와 사용자와의 궁합과 궁합점수를 나타내주세요. 아래의 예시랑 무조건 같은 형식으로 메시지를 출력해주세요
-                예시) *사진의 분위기와 설명을 요약하면 ,,, (이하색략)
+                예시) *사진의 분위기와 설명을 요약하면 ,,, (이하생략)
                      *추천 가구 리스트 ,,,
                      1. 가구명: ##
                         색상: ##
                         설명: ##
                         가격: ##
-                        상품: (Context2상의 mdl_cd의 값)
+                        상품: (Context상의 mdl_cd의 값)
                      2. ,,,
                      (이하생략)
                      
@@ -195,12 +219,10 @@ def vision_chain(inputs):
                      *최종 궁합점수
                      위에서 언급한 가구리스트별로 궁합점수를 5점만점 색깔있는 별이모티콘으로 책정해서 보여주고 인테리어에 대한 한줄 정리를 해준다.(이모티콘도 끝에 붙여준다)
                 예시 끝)
-                *주의사항) : 한글로 답해주시고 가독성있게 개행문자를 포함 해서 보여주세요. 재치있고 눈에잘들어오도록 답변해주세요. 일치하는 가구가 없거나, 가구가 아닌 다른품목을 추천 해달라고 하면 없다고 하고 "죄송합니다. 일치하는 가구를 못찾았습니다" 라고 알려주고 채팅을 끝내세요
+                *주의사항) : 한글로 답해주시고 재치있고 눈에잘들어오도록 답변해주세요. 최대한 질문 및 사진의 색상, 분위기, 인테리어와 일치하는 가구를 찾아서 추천해주세요. 가구가 아닌 다른품목을 추천 해달라고 하면 없다고 하고 "죄송합니다. 일치하는 가구를 못찾았습니다. 정확한 가구 종류를 말해주세요." 라고 알려주고 채팅을 끝내세요
                 *문맥의 내용은 아래와 같음) :
                 '''
-                + f'#Context2: {context2}'
-                + f'#Questionn: {question}'
-
+                + f'#Context: {context}'
             ]
         )
 
@@ -212,7 +234,7 @@ def vision_chain(inputs):
             content=[
                 {
                     "type": "text",
-                    "text": f"사진의 주요 색깔은 {closest_color_name},선호 색상 및 스타일은 {question}"
+                    "text": f"사진의 주요 색깔은 {context2}, \n 선호 색상 및 스타일 관련 사용자 질문은 {question}"
                 },
                 {
                     "type": "image_url",
@@ -284,16 +306,20 @@ def chat_interface(image_base64, user_preference):
 
         #image_data = base64.b64decode(image_base64)
 
-        # 색상 및 인테리어 구성 방식 추천
-        final_chain = (
-                vision_chain | StrOutputParser()
-        )
+        try:
+            # 색상 및 인테리어 구성 방식 추천
+            final_chain = (
+                    vision_chain | StrOutputParser()
+            )
 
-        # Vision Chain에 이미지 데이터와 질문 전달
-        res = final_chain.invoke({"image": image_base64, "question": user_preference, "context": color_retriever,
-                                  "context2": furniture_retriever})
-
-        return res
+            # Vision Chain에 이미지 데이터와 질문 전달
+            res = final_chain.invoke({"image": image_base64
+                                    , "question": user_preference
+                                      })
+            return res
+        except Exception as e:
+            print(f"Error in vision_chain: {e}")
+            raise
         # 추천 결과 출력
         #print(f"### 추천 결과: {res}")
 
