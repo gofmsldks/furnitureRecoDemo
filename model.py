@@ -162,22 +162,26 @@ def format_documents(docs):
     formatted_docs = []
     for doc in docs:
         try:
-            # page_content를 JSON으로 로드
-            content_json = json.loads(doc.page_content)
-            # 보기 좋게 JSON 문자열로 변환
-            formatted_docs.append(json.dumps(content_json, indent=4, ensure_ascii=False))
+            content_json = json.loads(doc.page_content)  # JSON 파싱
+            formatted_text = (
+                f"가구명: {content_json.get('MDL_NM')}\n"
+                f"색상: {content_json.get('MDL_COLOR')}\n"
+                f"설명: {content_json.get('MDL_DETAIL')}\n"
+                f"가격: {content_json.get('COST')} 원\n"
+                f"상품 코드: {content_json.get('MDL_CD')}\n"
+            )
+            formatted_docs.append(formatted_text)
         except json.JSONDecodeError:
-            # JSON이 아닌 경우 그대로 추가
-            formatted_docs.append(doc.page_content)
-    return formatted_docs
+            formatted_docs.append(doc.page_content)  # JSON이 아닌 경우 그대로 추가
+    return "\n\n".join(formatted_docs)  # 개행으로 구분
 
 def vision_chain(inputs):
     try:
         image_base64, question = str(inputs["image"]), str(inputs["question"])
         image_data, closest_color_name = recommendation_engine_with_image(image_base64)
         # retriever에서 데이터를 검색
-        context_docs = furniture_retriever.invoke(question)
-        context2_docs = color_retriever.invoke(closest_color_name)
+        context_docs = furniture_retriever.get_relevant_documents(question)
+        context2_docs = color_retriever.get_relevant_documents(closest_color_name)
 
         # 포맷팅된 데이터 생성
         context = format_documents(context_docs)
