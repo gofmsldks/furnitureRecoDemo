@@ -60,7 +60,7 @@ color_info_documents = [
     Document(page_content=f"The color {color} has the RGB values {rgb}.") for color, rgb in color_database.items()
 ]
 print(color_info_documents)
-text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=100, separator="\n")
+text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0, separator="\n")
 color_info_docs = text_splitter.split_documents(color_info_documents)
 color_info_db = FAISS.from_documents(color_info_docs, embeddings)
 color_retriever = color_info_db.as_retriever()
